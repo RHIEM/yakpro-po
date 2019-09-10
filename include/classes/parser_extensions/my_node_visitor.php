@@ -11,6 +11,8 @@
 //          Use and abuse at your own risks.
 //========================================================================
 
+use PhpParser\Node;
+
 class MyNodeVisitor extends PhpParser\NodeVisitorAbstract       // all parsing and replacement of scrambled names is done here!
 {                                                               // see PHP-Parser for documentation!
     private $t_loop_stack                   = array();
@@ -27,7 +29,7 @@ class MyNodeVisitor extends PhpParser\NodeVisitorAbstract       // all parsing a
                 $stmts              = $node->stmts;
                 $chunk_size = shuffle_get_chunk_size($stmts);
                 if ($chunk_size<=0)                 return false; // should never occur!
-                
+
                 if (count($stmts)>(2*$chunk_size))
                 {
                     //    $last_inst      = array_pop($stmts);
@@ -40,13 +42,13 @@ class MyNodeVisitor extends PhpParser\NodeVisitorAbstract       // all parsing a
         }
         return false;
     }
-    
+
     private function get_identifier_name(PhpParser\Node $node)
     {
         if ($node instanceof PhpParser\Node\Identifier || $node instanceof PhpParser\Node\VarLikeIdentifier) return $node->name;
         return '';
     }
-    
+
     private function set_identifier_name(PhpParser\Node &$node,$name)
     {
         if ($node instanceof PhpParser\Node\Identifier || $node instanceof PhpParser\Node\VarLikeIdentifier)
@@ -104,7 +106,7 @@ class MyNodeVisitor extends PhpParser\NodeVisitorAbstract       // all parsing a
                 $node_modified = true;
             }
         }
-        
+
         if ($conf->obfuscate_variable_name)
         {
             $scrambler = $t_scrambler['variable'];
@@ -409,16 +411,26 @@ class MyNodeVisitor extends PhpParser\NodeVisitorAbstract       // all parsing a
         if ($conf->obfuscate_method_name)
         {
             $scrambler = $t_scrambler['method'];
-            if ( ($node instanceof PhpParser\Node\Stmt\ClassMethod) || ($node instanceof PhpParser\Node\Expr\MethodCall) || ($node instanceof PhpParser\Node\Expr\StaticCall) )
+            if ( ($node instanceof PhpParser\Node\Stmt\ClassMethod) || ($node instanceof PhpParser\Node\Expr\MethodCall) || ($node instanceof PhpParser\Node\Expr\StaticCall))
             {
                 $name = $this->get_identifier_name($node->name);
+                global $privateFunctions;
                 if ( is_string($name) && (strlen($name) !== 0) )
                 {
-                    $r = $scrambler->scramble($name);
-                    if ($r!==$name)
-                    {
-                        $this->set_identifier_name($node->name,$r);
-                        $node_modified = true;
+                    if ($node instanceof PhpParser\Node\Stmt\ClassMethod && preg_match("/^_[a-zA-Z0-9]/",$name) && $node->isPrivate()) {
+                        $privateFunctions[] = $name;
+
+                        $r = $scrambler->scramble($name);
+                        if ($r !== $name) {
+                            $this->set_identifier_name($node->name, $r);
+                            $node_modified = true;
+                        }
+                    } elseif ( is_array($privateFunctions) && in_array($name, $privateFunctions) ) {
+                        $r = $scrambler->scramble($name);
+                        if ($r !== $name) {
+                            $this->set_identifier_name($node->name, $r);
+                            $node_modified = true;
+                        }
                     }
                 }
             }
@@ -485,7 +497,7 @@ class MyNodeVisitor extends PhpParser\NodeVisitorAbstract       // all parsing a
                 }
             }
         }
-        
+
         if  ($conf->obfuscate_class_constant_name)
         {
             $scrambler  = $t_scrambler['class_constant'];
@@ -517,7 +529,7 @@ class MyNodeVisitor extends PhpParser\NodeVisitorAbstract       // all parsing a
                 }
             }
         }
-        
+
         if ($conf->obfuscate_namespace_name)
         {
             $scrambler = $t_scrambler['class'];
@@ -1018,7 +1030,7 @@ class MyNodeVisitor extends PhpParser\NodeVisitorAbstract       // all parsing a
                 $node_modified = true;
             }
         }
-        
+
         if ($conf->shuffle_stmts)
         {
             if (    ($node instanceof PhpParser\Node\Stmt\Function_)
@@ -1041,7 +1053,7 @@ class MyNodeVisitor extends PhpParser\NodeVisitorAbstract       // all parsing a
                 {
                     if ($this->shuffle_stmts($node->{'else'}))  $node_modified  = true;
                 }
-                
+
                 $elseif                 = $node->elseifs;
                 if (isset($elseif) && count($elseif))       // elseif mode
                 {
@@ -1052,7 +1064,7 @@ class MyNodeVisitor extends PhpParser\NodeVisitorAbstract       // all parsing a
                 }
             }
         }
-        
+
         if ($node_modified) return $node;
     }
 }
